@@ -12,7 +12,7 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from tensorflow.python import debug as tfdbg
 
-from src import utils
+import utils
 
 
 def load_data():
