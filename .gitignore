@@ -1,0 +1,6 @@
+src/runs/
+data/
+log/
+venv/
+.idea/
+src/params.p
