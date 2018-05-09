@@ -20,6 +20,14 @@ def demo():
     b = tf.Variable([[1, 2], [1, 2], [2, 3]], name="a")
     print(b)
 
+    t1 = [[[1, 2, 3]], [[1, 2, 3]], [[1, 2, 3]]]
+    t4 = tf.reshape(t1, [-1, 3])
+    print(t4)
+
+    t2 = [[[1, 2, 3, 4]], [[1, 2, 3, 4]], [[1, 2, 3, 4]]]
+    t3 = tf.concat([t1, t2], 2)
+    print(t3)
+
     t1 = [[1, 2, 3], [4, 5, 6]]
     t2 = [[7, 8, 9], [10, 11, 12]]
 
@@ -114,7 +122,7 @@ def demo():
         [[1.2], [3.4]]
     ])
     print(features4)
-    fc = tf.contrib.layers.fully_connected(features4, num_outputs=2)
+    fc = tf.contrib.layers.fully_connected(features4, num_outputs=1)
     print(fc)
     sess.run(tf.global_variables_initializer())
     print(sess.run(fc))

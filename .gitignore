@@ -1,6 +1,6 @@
-src/runs/
+src/
 data/
 log/
 venv/
 .idea/
-src/params.p
+!src/*.py

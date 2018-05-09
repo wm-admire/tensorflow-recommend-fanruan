@@ -10,9 +10,11 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-from tensorflow.python import debug as tfdbg
 
 import utils
+
+
+# from tensorflow.python import debug as tfdbg
 
 
 def load_data():
@@ -102,8 +104,6 @@ def __evaluate__(users, tnames, histories):
         else:
             times[tname] = {}
             times[tname][username] = 1
-        if index > 1000:
-            break
 
     # 预览次数 row=tname，col=user
     tname_user_times = []
@@ -151,10 +151,13 @@ def get_inputs():
 
 def get_user_embedding(uid, user_features):
     with tf.name_scope("user-embedding"):
+        # [793,32]
         uid_embed_matrix = tf.Variable(tf.random_uniform([uid_max, embed_dim], -1, 1, dtype="float64"), name="uid-embed-matrix")
+        # [793,1,32]
         uid_embed_layer = tf.nn.embedding_lookup(uid_embed_matrix, uid, name="uid-embed-layer")
-
+        # [793,1263]
         user_features_embed_matrix = tf.Variable(user_features, name="user-features-matrix")
+        # [793,1,1263]
         user_features_embed_layer = tf.nn.embedding_lookup(user_features_embed_matrix, uid, name="user-features-layer")
 
     return uid_embed_layer, user_features_embed_layer
@@ -162,10 +165,13 @@ def get_user_embedding(uid, user_features):
 
 def get_tname_embedding(tid, tname_features):
     with tf.name_scope("tname-embedding"):
+        # [1263,32]
         tid_embed_matrix = tf.Variable(tf.random_uniform([tid_max, embed_dim], -1, 1, dtype="float64"), name="tname-embed-matrix")
+        # [1263,1,32]
         tid_embed_layer = tf.nn.embedding_lookup(tid_embed_matrix, tid, name="tid-embed-layer")
-
+        # [1263,1263,793]
         tname_features_embed_matrix = tf.Variable(tname_features, name="tname-features-matrix")
+        # [1,793]
         tname_features_embed_layer = tf.nn.embedding_lookup(tname_features_embed_matrix, tid, name="tname-features-layer")
 
     return tid_embed_layer, tname_features_embed_layer
@@ -174,26 +180,32 @@ def get_tname_embedding(tid, tname_features):
 def get_user_feature_layer(uid_embed_layer, user_features_embed_layer):
     with tf.name_scope("user-fc"):
         # 第一层全连接
+        # [793,1,32]
         uid_layer = tf.layers.dense(uid_embed_layer, embed_dim, name="user-layer", activation=tf.nn.relu)
+        # [793,1,1263]
         uid_feature_layer = tf.layers.dense(user_features_embed_layer, u_feature_max, name="user-feature-layer", activation=tf.nn.relu)
         # 第二层全连接
+        # [793,1,1295]
         user_combined_layer = tf.concat([uid_layer, uid_feature_layer], 2)
-        user_combined_layer = tf.contrib.layers.fully_connected(user_combined_layer, 1500, tf.tanh)
-
-        user_combined_layer_flat = tf.reshape(user_combined_layer, [-1, 1500], name="user-combined-layer-flat")
+        user_combined_layer = tf.contrib.layers.fully_connected(user_combined_layer, tile_size, tf.tanh)
+        #
+        user_combined_layer_flat = tf.reshape(user_combined_layer, [-1, tile_size])
     return user_combined_layer, user_combined_layer_flat
 
 
 def get_tname_feature_layer(tid_embed_layer, tname_features_embed_layer):
     with tf.name_scope("tname-fc"):
         # 第一层全连接
+        # [1263,1,32]
         tid_layer = tf.layers.dense(tid_embed_layer, embed_dim, name="tname-layer", activation=tf.nn.relu)
+        # [1263,1,793]
         tid_feature_layer = tf.layers.dense(tname_features_embed_layer, t_feature_max, name="tname-feature-layer", activation=tf.nn.relu)
         # 第二层全连接
+        # [1263,1,825]
         tname_combined_layer = tf.concat([tid_layer, tid_feature_layer], 2)
-        tname_combined_layer = tf.contrib.layers.fully_connected(tname_combined_layer, 1500, tf.tanh)
+        tname_combined_layer = tf.contrib.layers.fully_connected(tname_combined_layer, tile_size, tf.tanh)
 
-        tname_combined_layer_flat = tf.reshape(tname_combined_layer, [-1, 1500], name="tname-combined-layer-flat")
+        tname_combined_layer_flat = tf.reshape(tname_combined_layer, [-1, tile_size])
     return tname_combined_layer, tname_combined_layer_flat
 
 
@@ -215,7 +227,7 @@ def create_default_graph(user_features, tname_features):
 
         with tf.name_scope("loss"):
             # MSE损失，将计算值回归到评分
-            cost = tf.losses.mean_squared_error(targets, inference)
+            cost = tf.losses.mean_squared_error(target_holder, inference)
             loss = tf.reduce_mean(cost)
 
         global_step = tf.Variable(0, name="global-step", trainable=False)
@@ -228,9 +240,13 @@ def create_default_graph(user_features, tname_features):
 def train(graph, loss, global_step, gradients, train_op, uid_holder, tid_holder, target_holder, learning_rate_holder, dropout_keep_holder):
     losses = {"train": [], "test": []}
 
-    with tf.Session(graph=graph) as sess:
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.4
+    config.log_device_placement = True
+
+    with tf.Session(graph=graph, config=config) as sess:
         # debug
-        sess = tfdbg.LocalCLIDebugWrapperSession(sess)
+        # sess = tfdbg.LocalCLIDebugWrapperSession(sess)
         # 搜集数据给tensorBoard用
         # Keep track of gradient values and sparsity
         grad_summaries = []
@@ -350,15 +366,15 @@ if __name__ == '__main__':
     # 嵌入矩阵的维度
     embed_dim = 32
     # 用户id个数
-    # uid_max = max(features.take(2, 1)) + 1
     uid_max = len(users)
     # tname id 个数
-    # tid_max = max(features.take(0, 1)) + 1
     tid_max = len(tnames)
 
-    u_feature_max = tid_max
+    u_feature_max = len(users_features)
 
-    t_feature_max = uid_max
+    t_feature_max = len(tnames_features)
+
+    tile_size = max(u_feature_max, t_feature_max) + embed_dim
 
     # 超参
     # number of epochs
