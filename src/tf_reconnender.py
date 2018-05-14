@@ -9,7 +9,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 import utils
 
@@ -46,7 +48,11 @@ def load_data():
     # 整理成浏览次数记录的数据，暨 某模板被某用户预览的次数
     ratings_table, tnames_features, users_features = __evaluate__(users, tnames, histories)
 
-    # todo 使用对应的times 进行降维作为其对应的特征
+    tname_pca = PCA(n_components=0.8)
+    tnames_features = tname_pca.fit_transform(np.array(tnames_features))
+
+    user_pca = PCA(n_components=0.8)
+    users_features = user_pca.fit_transform(np.array(users_features))
 
     # tname 特征
     tnames_table = pd.DataFrame([[i, tnames_features[i]] for i in range(len(tnames_features))],
@@ -122,10 +128,12 @@ def __evaluate__(users, tnames, histories):
 
         tname_user_times.append(t_list)
 
-    tname_user_times = np.array(tname_user_times)
+    # 做一下标准化处理
+    tname_user_times = StandardScaler().fit_transform(tname_user_times)
 
-    # 矩阵转置 从 793（用户）*1262（模板）转换成 1262（模板）*793（用户）
+    # 矩阵转置 从 793（用户）*1263（模板）转换成 1263（模板）*793（用户）
     # 预览次数 row=user,col=tname
+
     user_tname_times = np.transpose(tname_user_times)
 
     # 次数列表
@@ -136,6 +144,13 @@ def __evaluate__(users, tnames, histories):
         for u in t_item.keys():
             u_item = t_item[u]
             times_list.append([t, u, u_item])
+
+    times_list = np.transpose(times_list)
+    # 做一下标准化处理
+    temp = times_list[2]
+    temp = StandardScaler().fit_transform(np.reshape(temp, (-1, 1)))
+    times_list[2] = np.reshape(temp, (1, -1))[0]
+    times_list = np.transpose(times_list)
 
     return times_list, tname_user_times, user_tname_times
 
@@ -222,8 +237,14 @@ def create_default_graph(user_features, tname_features):
         tname_combined_layer, tname_combined_layer_flat = get_tname_feature_layer(tid_embed_layer, tname_features_embed_layer)
 
         with tf.name_scope("inference"):
-            inference = tf.reduce_sum(user_combined_layer_flat * tname_combined_layer_flat, axis=1)
-            inference = tf.expand_dims(inference, axis=1)
+            # 将user特征和tname特征作为输入，经过全连接，输出一个值的方案
+            inference_layer = tf.concat([user_combined_layer_flat, tname_combined_layer_flat], 1)  # (?, tile_size)
+            inference = tf.layers.dense(inference_layer, 1,
+                                        kernel_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                        kernel_regularizer=tf.nn.l2_loss, name="inference")
+
+            # inference = tf.reduce_sum(user_combined_layer_flat * tname_combined_layer_flat, axis=1)
+            # inference = tf.expand_dims(inference, axis=1)
 
         with tf.name_scope("loss"):
             # MSE损失，将计算值回归到评分
@@ -234,6 +255,7 @@ def create_default_graph(user_features, tname_features):
         optimizer = tf.train.AdamOptimizer(learning_rate_holder)
         gradients = optimizer.compute_gradients(loss)  # cost
         train_op = optimizer.apply_gradients(gradients, global_step=global_step)
+
     return train_graph, loss, global_step, gradients, train_op, uid_holder, tid_holder, target_holder, learning_rate_holder, dropout_keep_holder
 
 
@@ -334,12 +356,15 @@ def train(graph, loss, global_step, gradients, train_op, uid_holder, tid_holder,
 
                 time_str = datetime.datetime.now().isoformat()
                 if (epoch_i * (len(test_x) // batch_size) + batch_i) % show_every_n_batches == 0:
-                    print('{}: Epoch {:>3} Batch {:>4}/{}   test_loss = {:.3f}'.format(
-                        time_str,
-                        epoch_i,
-                        batch_i,
-                        (len(test_x) // batch_size),
-                        test_loss))
+                    print(
+                        '{}: Epoch {:>3} Batch {:>4}/{}   test_loss = {:.5f}'.format(
+                            time_str,
+                            epoch_i,
+                            batch_i,
+                            (len(test_x) // batch_size),
+                            test_loss
+                        )
+                    )
 
         # Save Model
         saver.save(sess, save_dir)  # , global_step=epoch_i
@@ -370,9 +395,11 @@ if __name__ == '__main__':
     # tname id 个数
     tid_max = len(tnames)
 
-    u_feature_max = len(users_features)
+    u_feature_max = np.shape(users_features)[1]
+    print("dimension of u feature{}".format(np.shape(users_features)))
 
-    t_feature_max = len(tnames_features)
+    t_feature_max = np.shape(tnames_features)[1]
+    print("dimension of t feature{}".format(np.shape(tnames_features)))
 
     tile_size = max(u_feature_max, t_feature_max) + embed_dim
 
@@ -382,7 +409,7 @@ if __name__ == '__main__':
     # batch size
     batch_size = 256
 
-    dropout_keep = 0.5
+    dropout_keep = 0.2
     # learning rate
     learning_rate = 0.0001
     # show stats for every n number of batches

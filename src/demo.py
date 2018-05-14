@@ -1,8 +1,11 @@
 # encoding: utf-8
 # author: yaoh.wu
 
+import numpy as np
 import pandas as pd
 import tensorflow as tf
+
+from sklearn.decomposition import PCA
 
 
 def test():
@@ -11,6 +14,24 @@ def test():
     apd = pd.DataFrame(a)
 
     print(apd.head())
+
+    b = [[1, 1, 1, 0, 0, 0, 2, 2, 2],
+         [3, 3, 3, 6, 6, 6, 0, 0, 0],
+         [1, 1, 1, 0, 0, 0, 2, 2, 2],
+         [3, 3, 3, 6, 6, 6, 0, 0, 0]]
+
+    tf_pca = PCA(n_components=0.9)
+    c = tf_pca.fit_transform(np.array(b))
+    print(np.shape(c))
+    print(c)
+
+    d = [[1, 2, 3], [4, 5, 6]]
+    e = [1, 2, 3]
+    f = [4, 5, 6]
+
+    print(np.exp(d) / (np.exp(d) + 1))
+    print(np.exp(e) / (np.exp(e) + 1))
+    print(np.exp(f) / (np.exp(f) + 1))
 
 
 def demo():
@@ -128,4 +149,31 @@ def demo():
     print(sess.run(fc))
 
 
-demo()
+def test_reshape():
+    a = [[1, 2, 3], [4, 5, 6]]
+    print(a)
+    b = np.reshape(a[0], (-1, 1))
+    print(b)
+    c = np.reshape(b, (1, -1))[0]
+    print(c)
+
+    a[1] = c
+    a[0] = [0, 0, 0]
+
+    print(a)
+
+    a = np.transpose(a)
+    print(a)
+
+
+def test_df_map():
+    frame = pd.DataFrame(np.random.randn(4, 3), columns=list('abc'), index=['Utah', 'Ohio', 'Texas', 'Oregon'])
+    print(frame)
+
+    f = lambda x:  if
+
+    frame = frame.apply(f,axis=1)
+
+    print(frame)
+
+test_df_map()
